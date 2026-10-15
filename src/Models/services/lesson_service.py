@@ -59,6 +59,7 @@ class LessonService:
         self.lesson_repo = LessonRepository(session)
         self.chunk_repo = LessonChunkRepository(session)
         self.teacher_repo = TeacherRepository(session)
+        self.MAX_FILE_SIZE = 25 * 1024 * 1024 
         
         # File processing utilities
         self.file_validator = FileValidator()
@@ -205,6 +206,11 @@ class LessonService:
             HTTPException: If file validation fails
         """
         try:
+            if file.size > self.MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"File too large. Max size is {self.MAX_FILE_SIZE / (1024 * 1024)} MB"
+                )
             # Read file content
             file_content = await file.read()
             

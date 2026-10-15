@@ -277,7 +277,7 @@ class PGVectorProvider(VectorDBInterface):
 
         return True
     
-    async def search_by_vector(self, collection_name: str, vector: list, limit: int):
+    async def search_by_vector(self, collection_name: str, vector: list, limit: int, lesson_id=None):
 
         is_collection_existed = await self.is_collection_existed(collection_name=collection_name)
         if not is_collection_existed:
@@ -287,13 +287,49 @@ class PGVectorProvider(VectorDBInterface):
         vector = "[" + ",".join([ str(v) for v in vector ]) + "]"
         async with self.db_client() as session:
             async with session.begin():
-                search_sql = sql_text(f'SELECT {PgVectorTableSchemeEnums.TEXT.value} as text, 1 - ({PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) as score'
-                                      f' FROM {collection_name}'
-                                      ' ORDER BY score DESC '
-                                      f'LIMIT {limit}'
-                                      )
-                
-                result = await session.execute(search_sql, {"vector": vector})
+                if lesson_id is not None:
+                    # Handle both single lesson_id (string) and multiple lesson_ids (list)
+                    if isinstance(lesson_id, (list, tuple)):
+                        # Multiple lesson_ids - use IN clause
+                        lesson_ids_placeholder = ','.join([':lesson_id_' + str(i) for i in range(len(lesson_id))])
+                        search_sql = sql_text(
+                            f'SELECT v.{PgVectorTableSchemeEnums.TEXT.value} as text, '
+                            f'1 - (v.{PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) as score, '
+                            f'v.{PgVectorTableSchemeEnums.CHUNK_ID.value} as chunk_id, '
+                            f'v.{PgVectorTableSchemeEnums.METADATA.value} as metadata '
+                            f'FROM {collection_name} v '
+                            f'JOIN lesson_chunks lc ON v.{PgVectorTableSchemeEnums.CHUNK_ID.value} = lc.chunk_id '
+                            f'WHERE lc.lesson_id IN ({lesson_ids_placeholder}) '
+                            f'ORDER BY score DESC '
+                            f'LIMIT {limit}'
+                        )
+                        # Create parameter dictionary for multiple lesson_ids
+                        params = {"vector": vector}
+                        for i, lid in enumerate(lesson_id):
+                            params[f'lesson_id_{i}'] = str(lid)
+                        result = await session.execute(search_sql, params)
+                    else:
+                        # Single lesson_id - use equality clause
+                        search_sql = sql_text(
+                            f'SELECT v.{PgVectorTableSchemeEnums.TEXT.value} as text, '
+                            f'1 - (v.{PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) as score, '
+                            f'v.{PgVectorTableSchemeEnums.CHUNK_ID.value} as chunk_id, '
+                            f'v.{PgVectorTableSchemeEnums.METADATA.value} as metadata '
+                            f'FROM {collection_name} v '
+                            f'JOIN lesson_chunks lc ON v.{PgVectorTableSchemeEnums.CHUNK_ID.value} = lc.chunk_id '
+                            f'WHERE lc.lesson_id = :lesson_id '
+                            f'ORDER BY score DESC '
+                            f'LIMIT {limit}'
+                        )
+                        result = await session.execute(search_sql, {"vector": vector, "lesson_id": str(lesson_id)})
+                else:
+                    # Original behavior without filtering
+                    search_sql = sql_text(f'SELECT {PgVectorTableSchemeEnums.TEXT.value} as text, 1 - ({PgVectorTableSchemeEnums.VECTOR.value} <=> :vector) as score'
+                                          f' FROM {collection_name}'
+                                          ' ORDER BY score DESC '
+                                          f'LIMIT {limit}'
+                                          )
+                    result = await session.execute(search_sql, {"vector": vector})
 
                 records = result.fetchall()
 

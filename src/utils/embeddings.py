@@ -260,16 +260,26 @@ class VectorStorage:
             if not collection_exists:
                 return []
             
-            # Search using vectordb client
-            results = await self.vectordb_client.search_by_vector(
-                collection_name=collection_name,
-                vector=query_embedding,
-                limit=limit
-            )
-            
-            # Note: Current pgvector implementation doesn't support lesson_id filtering
-            # because we don't have record_id or metadata stored properly
-            # This is a limitation that should be addressed in future improvements
+            # If lesson_ids filter is provided, use it for filtering
+            if lesson_ids and len(lesson_ids) > 0:
+                # Convert UUIDs to strings for the vectordb client
+                lesson_ids_str = [str(lesson_id) for lesson_id in lesson_ids]
+                
+                # Pass lesson_ids to vectordb client (supports both single and multiple)
+                lesson_filter = lesson_ids_str[0] if len(lesson_ids_str) == 1 else lesson_ids_str
+                results = await self.vectordb_client.search_by_vector(
+                    collection_name=collection_name,
+                    vector=query_embedding,
+                    limit=limit,
+                    lesson_id=lesson_filter
+                )
+            else:
+                # Search using vectordb client without lesson_id filter (original behavior)
+                results = await self.vectordb_client.search_by_vector(
+                    collection_name=collection_name,
+                    vector=query_embedding,
+                    limit=limit
+                )
             
             # Convert to expected format
             formatted_results = []

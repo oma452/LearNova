@@ -1,0 +1,12 @@
+{
+    "mcpServers": {
+        "lesson_retrieval": {
+            "command": "python",
+            "args": [
+                "-m", 
+                "src.Chatbot.MCP.Servers.lesson_retrieval_server"
+            ],
+            "transport": "stdio"
+        }
+    }
+}
